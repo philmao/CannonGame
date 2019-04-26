@@ -70,7 +70,12 @@ public class CannonView extends SurfaceView
    // game objects
    private Cannon cannon;
    private Blocker blocker;
+   private Blocker blocker2;
    private ArrayList<Target> targets;
+
+   private int gameScore;
+   private int gameLevel = 1;  // only one game level at this time
+   private int gameHighScore;
 
    // dimension variables
    private int screenWidth;
@@ -81,6 +86,9 @@ public class CannonView extends SurfaceView
    private double timeLeft; // time remaining in seconds
    private int shotsFired; // shots the user has fired
    private double totalElapsedTime; // elapsed seconds
+
+   // blocker2 length
+   private int blocker2Length;
 
    // constants and variables for managing sounds
    public static final int TARGET_SOUND_ID = 0;
@@ -119,7 +127,6 @@ public class CannonView extends SurfaceView
          soundPool.load(context, R.raw.cannon_fire, 1));
       soundMap.put(BLOCKER_SOUND_ID,
          soundPool.load(context, R.raw.blocker_hit, 1));
-
       textPaint = new Paint();
       backgroundPaint = new Paint();
       backgroundPaint.setColor(Color.WHITE);
@@ -133,6 +140,9 @@ public class CannonView extends SurfaceView
 
       screenWidth = w; // store CannonView's width
       screenHeight = h; // store CannonView's height
+
+      Log.d(TAG, "width = " + screenWidth);
+      Log.d(TAG, "height = " + screenHeight);
 
       // configure text properties
       textPaint.setTextSize((int) (TEXT_SIZE_PERCENT * screenHeight));
@@ -201,6 +211,8 @@ public class CannonView extends SurfaceView
          targetX += (TARGET_WIDTH_PERCENT + TARGET_SPACING_PERCENT) *
             screenWidth;
       }
+      blocker2Length = (int) ((BLOCKER_LENGTH_PERCENT * screenWidth)/3);
+      Log.d(TAG, "initial blocker2Length = " + blocker2Length);
 
       // create a new Blocker
       blocker = new Blocker(this, Color.BLACK, MISS_PENALTY,
@@ -210,10 +222,21 @@ public class CannonView extends SurfaceView
          (int) (BLOCKER_LENGTH_PERCENT * screenHeight),
          (float) (BLOCKER_SPEED_PERCENT * screenHeight));
 
+      // create blocker2 running at half the speed of blocker and 1/3 of the size
+      // every time blocker2 is hit, increase size by 20%
+      blocker2 = new Blocker(this, Color.GRAY, MISS_PENALTY,
+              (int) ((BLOCKER_X_PERCENT - BLOCKER_WIDTH_PERCENT - TARGET_SPACING_PERCENT) * screenWidth),
+              (int) ((0.5 - BLOCKER_LENGTH_PERCENT / 2) * screenHeight),
+              (int) (BLOCKER_WIDTH_PERCENT * screenWidth),
+              (int) (blocker2Length),
+              (float) ((BLOCKER_SPEED_PERCENT * screenHeight)/2));
+
       timeLeft = 10; // start the countdown at 10 seconds
 
       shotsFired = 0; // set the initial number of shots fired
       totalElapsedTime = 0.0; // set the time elapsed to zero
+
+
 
       if (gameOver) { // start a new game after the last game ended
          gameOver = false; // the game is not over
@@ -232,7 +255,8 @@ public class CannonView extends SurfaceView
       if (cannon.getCannonball() != null)
          cannon.getCannonball().update(interval);
 
-      blocker.update(interval); // update the blocker's position
+      blocker.update(interval);  // update the blocker's position
+      blocker2.update(interval); // update the blocker's position
 
       for (GameElement target : targets)
          target.update(interval); // update the target's position
@@ -297,7 +321,7 @@ public class CannonView extends SurfaceView
 
                // display number of shots fired and total time elapsed
                builder.setMessage(getResources().getString(
-                  R.string.results_format, shotsFired, totalElapsedTime));
+                       R.string.results_format, shotsFired, totalElapsedTime, gameScore));
                builder.setPositiveButton(R.string.reset_game,
                   new DialogInterface.OnClickListener() {
                      // called when "Reset Game" Button is pressed
@@ -305,6 +329,10 @@ public class CannonView extends SurfaceView
                      public void onClick(DialogInterface dialog,
                         int which) {
                         dialogIsDisplayed = false;
+                        if(gameScore > gameHighScore){
+                           gameHighScore = gameScore;
+                        }
+                        gameScore = 0;
                         newGame(); // set up and start a new game
                      }
                   }
@@ -336,6 +364,10 @@ public class CannonView extends SurfaceView
       // display time remaining
       canvas.drawText(getResources().getString(
          R.string.time_remaining_format, timeLeft), 50, 100, textPaint);
+      canvas.drawText(getResources().getString(
+              R.string.high_score_format, gameHighScore), 50, 170, textPaint);
+      canvas.drawText(getResources().getString(
+              R.string.game_score_format, gameScore), 50, 240, textPaint);
 
       cannon.draw(canvas); // draw the cannon
 
@@ -344,7 +376,8 @@ public class CannonView extends SurfaceView
          cannon.getCannonball().isOnScreen())
          cannon.getCannonball().draw(canvas);
 
-      blocker.draw(canvas); // draw the blocker
+      blocker.draw(canvas);  // draw the blocker
+      blocker2.draw(canvas); // draw the blocker
 
       // draw all of the Targets
       for (GameElement target : targets)
@@ -368,6 +401,9 @@ public class CannonView extends SurfaceView
                cannon.removeCannonball(); // remove Cannonball from game
                targets.remove(n); // remove the Target that was hit
                --n; // ensures that we don't skip testing new target n
+
+               // add 10 to score (only one level at this time)
+               gameScore += (10 * gameLevel);
                break;
             }
          }
@@ -386,6 +422,35 @@ public class CannonView extends SurfaceView
 
          // deduct blocker's miss penalty from remaining time
          timeLeft -= blocker.getMissPenalty();
+
+         // subtract 15 for blocker hit
+         gameScore -= (15 * gameLevel);
+      }
+      // check if ball collides with blocker2
+      if (cannon.getCannonball() != null &&
+              cannon.getCannonball().collidesWith(blocker2)) {
+         blocker2.playSound(); // play Blocker hit sound
+
+         // increase size by 20%
+         blocker2Length = (int) (blocker2Length * 1.2);
+         Log.d(TAG, "blocker2Length = " + blocker2Length);
+
+         // create new blocker2
+         blocker2 = new Blocker(this, Color.GRAY, MISS_PENALTY,
+                 (int) ((BLOCKER_X_PERCENT - BLOCKER_WIDTH_PERCENT - TARGET_SPACING_PERCENT) * screenWidth),
+                 (int) ((0.5 - BLOCKER_LENGTH_PERCENT / 2) * screenHeight),
+                 (int) (BLOCKER_WIDTH_PERCENT * screenWidth),
+                 (int) (blocker2Length),
+                 (float) ((BLOCKER_SPEED_PERCENT * screenHeight)/2));
+
+         // reverse ball direction
+         cannon.getCannonball().reverseVelocityX();
+
+         // deduct blocker2's miss penalty from remaining time
+         timeLeft -= blocker2.getMissPenalty();
+
+         // subtract 15 for blocker hit
+         gameScore -= (15 * gameLevel);
       }
    }
 
